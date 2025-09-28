@@ -10,7 +10,7 @@
 
 1) Plug the device to its 9V input and also to its regular usb port.
 2) Plug the device to the STLINK-V3MINIE. (Red stripe points away from the USB port)
-3) Put the device in debug mode by pressing RESET and then BOOT.
+3) Put the device in debug mode by pressing RESET and then BOOT (it should be done always before debugging).
 4) Start debugging from VS Code, setting up some breakpoints.
 
 ---
