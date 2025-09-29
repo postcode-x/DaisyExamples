@@ -144,7 +144,7 @@ int main(void)
 
 	hw.StartAudio(AudioCallback);
 
-	toggleIR.Init(seed::D7, 1000);
+	//toggleIR.Init(seed::D7, 1000);
 
 	//hw.StartAudio(AudioCallback);
 	while(1) {
