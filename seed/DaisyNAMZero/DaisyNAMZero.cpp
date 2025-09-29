@@ -13,19 +13,18 @@ DaisySeed hw;
 // --------------------------- CONSTANTS ---------------------------------- 
 
 #define numChannels 1 // number of input/output audio channels (currently only mono)
-#define numFrames 4   // number of samples processed per audio callback
+#define numFrames 64  // number of samples processed per audio callback
 
 
 // -------------------------- FUNCTION DECS -------------------------------
 
-void AllocateIOPointers();
-void DeallocateIOPointers();
-void PrepareIOPointers();
 void PrepareBuffers();
 void StageIR();
 void ApplyDSPStaging();
 void ProcessInput(const float* const* inputs);
 void FallbackDSP();
+float clip(float n, float lower, float upper);
+
 
 // -------------------------- GLOBAL VARIABLES ----------------------------
 
@@ -37,25 +36,37 @@ std::unique_ptr<dsp::ImpulseResponse> mStagedIR;
 std::vector<double> mInputArray;
 std::vector<double> mOutputArray;
 
-// Raw pointers (allocated manually, see PrepareIOPointers)
-double* mInputPointers  = nullptr;
-double* mOutputPointers = nullptr;
+// Raw pointers 
+double* mInputPointers  = mInputArray.data();
+double* mOutputPointers = mOutputArray.data();
 
+//bool enableModel = true;
+bool enableIR = false;
+
+// Switches
+//Switch toggleModel;
+Switch toggleIR;
 
 // ------------------------- MAIN APPLICATION ----------------------------
 
 // Main audio processing callback
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
-	ProcessInput(in);   // Copy samples from hardware input -> mInputArray
+	ProcessInput(in);   // Adjust input gain
     FallbackDSP();      // For now, simply copy input to output
 
-	// Output: pass input channels straight through
-	for (size_t i = 0; i < size; i++)
-	{
-		out[0][i] = in[0][i]; // left channel
-		out[1][i] = in[1][i]; // right channel
+	// Process IR
+    double* irPointers = mOutputPointers;
+    if(mIR != nullptr && enableIR){
+         irPointers = mIR->Process(mInputPointers, size);
 	}
+
+	// Output result
+	for(size_t i = 0; i < size; i++){
+		out[0][i] = clip(irPointers[i], -1.0f, 1.0f);
+		//out[0][i] = in[0][i]; // left channel straight through
+	}
+
 }
 
 // Converts hardware input into double buffer with gain applied
@@ -64,20 +75,20 @@ void ProcessInput(const float* const* inputs)
   const double gain = /* adjustable input gain (currently fixed) */ 1.0;
 
   for (size_t s = 0; s < numFrames; s++)
-    mInputArray[s] += gain * inputs[0][s]; // only first channel used
+    mInputArray[s] = gain * inputs[0][s]; // only first channel used
 }
 
 // "Fallback" DSP: simply copies input buffer to output buffer
 void FallbackDSP()
 {
-  for (auto s = 0; s < numFrames; s++)
+  for (size_t s = 0; s < numFrames; s++)
     mOutputArray[s] = mInputArray[s];
 }
 
 // Prepare a staged impulse response from static IR data
 void StageIR()
 {
-    /*const double sampleRate = hw.AudioSampleRate();
+    const double sampleRate = hw.AudioSampleRate();
     dsp::wav::LoadReturnCode wavState = dsp::wav::LoadReturnCode::ERROR_OTHER;
 
     try
@@ -95,67 +106,16 @@ void StageIR()
     {
         // Cleanup staged IR if load failed
         mStagedIR = nullptr;
-    }*/
+    }
 }
 
-// Initialize arrays and pointer-based IO buffers
 void PrepareBuffers()
 {
-    PrepareIOPointers();
+    mInputArray.assign(numFrames, 0.0);
+    mOutputArray.assign(numFrames, 0.0);
 
-    // Resize and clear sample arrays
-    mInputArray.resize(numFrames);
-    std::fill(mInputArray.begin(), mInputArray.end(), 0.0);
-
-    mOutputArray.resize(numFrames);
-    std::fill(mOutputArray.begin(), mOutputArray.end(), 0.0);
-
-    // Point raw pointers to underlying vector memory
     mInputPointers  = mInputArray.data();
     mOutputPointers = mOutputArray.data();
-}
-
-// IO pointer setup: deallocate any old buffers, then allocate new ones
-void PrepareIOPointers()
-{
-    DeallocateIOPointers();
-    AllocateIOPointers();
-}
-
-// Release old buffers
-void DeallocateIOPointers()
-{
-    if(mInputPointers != nullptr)
-    {
-        delete[] mInputPointers;
-        mInputPointers = nullptr;
-    }
-    if(mInputPointers != nullptr) // sanity check
-        throw std::runtime_error("Failed to deallocate input buffer!");
-
-    if(mOutputPointers != nullptr)
-    {
-        delete[] mOutputPointers;
-        mOutputPointers = nullptr;
-    }
-    if(mOutputPointers != nullptr)
-        throw std::runtime_error("Failed to deallocate output buffer!");
-}
-
-// Allocate new buffers (size = numChannels)
-void AllocateIOPointers()
-{
-    if(mInputPointers != nullptr)
-        throw std::runtime_error("Input buffer already allocated!");
-    mInputPointers = new double[numChannels];
-    if(mInputPointers == nullptr)
-        throw std::runtime_error("Failed to allocate input buffer!");
-
-    if(mOutputPointers != nullptr)
-        throw std::runtime_error("Output buffer already allocated!");
-    mOutputPointers = new double[numChannels];
-    if(mOutputPointers == nullptr)
-        throw std::runtime_error("Failed to allocate output buffer!");
 }
 
 // Promote staged IR to active IR
@@ -166,6 +126,10 @@ void ApplyDSPStaging()
     mIR       = std::move(mStagedIR);
     mStagedIR = nullptr;
   }
+}
+
+float clip(float n, float lower, float upper) {
+  return std::max(lower, std::min(n, upper));
 }
 
 int main(void)
@@ -180,5 +144,13 @@ int main(void)
 
 	hw.StartAudio(AudioCallback);
 
-	while(1) {} // main loop (idle)
+	toggleIR.Init(seed::D7, 1000);
+
+	//hw.StartAudio(AudioCallback);
+	while(1) {
+
+        //toggleIR.Debounce();
+        //enableIR = toggleIR.Pressed();
+        //hw.SetLed(enableIR); // Led is on when IR is on
+    }
 }
