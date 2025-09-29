@@ -52,8 +52,8 @@ Switch toggleIR;
 // Main audio processing callback
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
-	ProcessInput(in);   // Adjust input gain
-    FallbackDSP();      // For now, simply copy input to output
+  ProcessInput(in);   // Adjust input gain
+  FallbackDSP();      // For now, simply copy input to output
 
 	// Process IR
     double* irPointers = mOutputPointers;
